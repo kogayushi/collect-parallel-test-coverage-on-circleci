@@ -59,10 +59,4 @@ task jacocoMerge(type: JacocoMerge) {
 jacocoTestReport {
     dependsOn jacocoMerge
     executionData jacocoMerge.destinationFile
-
-    reports {
-        xml.enabled true
-        csv.enabled false
-        html.enabled true
-    }
 }

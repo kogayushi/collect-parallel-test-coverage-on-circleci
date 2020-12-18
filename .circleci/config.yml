@@ -1,13 +1,76 @@
-# Use the latest 2.1 version of CircleCI pipeline process engine. See: https://circleci.com/docs/2.0/configuration-reference
 version: 2.1
-# Use a package of configuration called an orb.
-orbs:
-  # Declare a dependency on the welcome-orb
-  welcome: circleci/welcome-orb@0.4.1
-# Orchestrate or schedule a set of jobs
+jobs:
+  dependencies:
+    docker:
+      - image: cimg/openjdk:11.0.8
+    steps:
+      - checkout
+      - restore_cache:
+          key: v1-gradle-wrapper-{{ checksum "gradle/wrapper/gradle-wrapper.properties" }}
+      - restore_cache:
+          key: v1-gradle-cache-{{ checksum "build.gradle" }}
+      - run:
+          name: 依存ライブラリのダウンロード
+          command: ./gradlew dependencies
+      - save_cache:
+          paths:
+            - ~/.gradle/wrapper
+          key: v1-gradle-wrapper-{{ checksum "gradle/wrapper/gradle-wrapper.properties" }}
+      - save_cache:
+          paths:
+            - ~/.gradle/caches
+          key: v1-gradle-cache-{{ checksum "build.gradle" }}
+  test:
+    parallelism: 4
+    docker:
+      - image: cimg/openjdk:11.0.8
+    steps:
+      - checkout
+      - restore_cache:
+          key: v1-gradle-wrapper-{{ checksum "gradle/wrapper/gradle-wrapper.properties" }}
+      - restore_cache:
+          key: v1-gradle-cache-{{ checksum "build.gradle" }}
+      - run:
+          name: テスト実行
+          command: |
+            cd src/test/kotlin
+            CLASSNAMES=$(circleci tests glob "**/*Test.kt" \
+              | sed 's@/@.@g' \
+              | sed 's/.kt//' \
+              | circleci tests split --split-by=timings --timings-type=classname)
+            cd ../../..
+            GRADLE_ARGS=$(echo $CLASSNAMES | awk '{for (i=1; i<=NF; i++) print "--tests",$i}')
+            echo "Prepared arguments for Gradle: $GRADLE_ARGS"
+            ./gradlew test $GRADLE_ARGS -Pcircleci
+      - persist_to_workspace:
+          root: ./build
+          paths:
+            - jacoco
+            - classes
+  jacoco:
+    docker:
+      - image: cimg/openjdk:11.0.8
+    steps:
+      - checkout
+      - restore_cache:
+          key: v1-gradle-wrapper-{{ checksum "gradle/wrapper/gradle-wrapper.properties" }}
+      - restore_cache:
+          key: v1-gradle-cache-{{ checksum "build.gradle" }}
+      - attach_workspace:
+          at: ./build
+      - run:
+          name: カバレッジ収集
+          command: ./gradlew jacocoTestReport
+      - store_artifacts:
+          path: ./build/reports
 workflows:
-  # Name the workflow "welcome"
-  welcome:
-    # Run the welcome/run job in its own container
+  version: 2
+  test:
     jobs:
-      - welcome/run
+      - dependencies
+      - test:
+          requires:
+            - dependencies
+      - jacoco:
+          requires:
+            - test
