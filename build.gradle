@@ -38,3 +38,31 @@ application {
     // Define the main class for the application.
     mainClassName = 'sample.AppKt'
 }
+
+test {
+    jacoco {
+        if (System.env.CIRCLE_NODE_INDEX != null) {
+            destinationFile = file("$buildDir/jacoco/test${System.env.CIRCLE_NODE_INDEX}.exec")
+        }
+    }
+}
+
+task jacocoMerge(type: JacocoMerge) {
+    FileTree tree = fileTree(dir: 'build/jacoco')
+    tree.visit {
+        executionData it.file
+    }
+
+    destinationFile file("${buildDir}/jacoco/test.exec")
+}
+
+jacocoTestReport {
+    dependsOn jacocoMerge
+    executionData jacocoMerge.destinationFile
+
+    reports {
+        xml.enabled true
+        csv.enabled false
+        html.enabled true
+    }
+}
